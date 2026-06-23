@@ -1,0 +1,6 @@
+.secret_key
+history.txt
+passwords.csv
+__pycache__/
+*.pyc
+venv/

@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Secure Random Password Generator</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+
+<header>
+    <div class="brand">🔐 PassForge</div>
+    <button id="themeToggle" type="button">🌙 Dark Mode</button>
+</header>
+
+<section class="hero">
+    <h1>Secure Random Password Generator</h1>
+    <p>Cryptographically strong passwords, generated locally with Python's <code>secrets</code> module.
+       Every password is guaranteed to include one of every character type you select.</p>
+</section>
+
+<main>
+
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            {% for m in messages %}
+                <div class="flash">{{ m }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <section class="card">
+        <div class="mode-tabs">
+            <button type="button" class="mode-tab active" id="tabGenerate" onclick="switchMode('generate')">⚡ Generate</button>
+            <button type="button" class="mode-tab" id="tabCheck" onclick="switchMode('check')">⌨️ Type My Own</button>
+        </div>
+
+        <form method="POST" action="{{ url_for('generate') }}" id="generateForm">
+
+            <div class="form-row">
+                <label for="lengthSlider">Password Length: <span id="lengthValue">16</span></label>
+                <input type="range" id="lengthSlider" name="length"
+                       min="{{ min_length }}" max="{{ max_length }}" value="16"
+                       oninput="document.getElementById('lengthValue').textContent = this.value">
+            </div>
+
+            <div class="form-row">
+                <label for="count">How many passwords?</label>
+                <input type="number" id="count" name="count" min="1" max="20" value="1">
+            </div>
+
+            <div class="form-row checkboxes">
+                <label><input type="checkbox" name="uppercase" checked> Uppercase (A-Z)</label>
+                <label><input type="checkbox" name="lowercase" checked> Lowercase (a-z)</label>
+                <label><input type="checkbox" name="numbers" checked> Numbers (0-9)</label>
+                <label><input type="checkbox" name="symbols" checked> Symbols (!@#$...)</label>
+            </div>
+
+            <button type="submit" class="generate-btn">Generate Password</button>
+        </form>
+
+        <form method="POST" action="{{ url_for('check_password') }}" id="checkForm" style="display:none;">
+            <div class="form-row">
+                <label for="customPassword">Type the password you want to check</label>
+                <div class="password-row">
+                    <input type="password" id="customPassword" name="custom_password"
+                           class="password-input" placeholder="Type or paste a password..."
+                           autocomplete="off" maxlength="128" required>
+                    <button type="button" class="icon-btn" id="customToggleBtn" onclick="toggleCustomVisibility()" title="Show/Hide">🙈</button>
+                </div>
+                <p class="hint">We never store this anywhere except your local history file, just like generated passwords.</p>
+            </div>
+            <button type="submit" class="generate-btn">Check Strength</button>
+        </form>
+    </section>
+
+    {% if passwords %}
+    <section class="card results">
+        <h2>Generated {{ passwords|length }} Password(s)</h2>
+        {% for p in passwords %}
+        <div class="password-row">
+            <code class="password-text masked" id="pwd-{{ loop.index0 }}" data-password="{{ p.password }}">••••••••</code>
+            <button class="icon-btn toggle-btn" type="button" onclick="toggleVisibility('pwd-{{ loop.index0 }}', this)" title="Show/Hide">👁️</button>
+            <button class="copy-btn" type="button" onclick="copyPassword('pwd-{{ loop.index0 }}', this)">📋 Copy</button>
+            <span class="strength strength-{{ p.strength|lower }}">{{ p.strength }}</span>
+            <span class="entropy">{{ p.entropy }} bits</span>
+        </div>
+        <div class="strength-bar">
+            <div class="strength-fill strength-fill-{{ p.strength|lower }}" style="width: {{ p.score }}%;"></div>
+        </div>
+        {% endfor %}
+    </section>
+    {% endif %}
+
+    <section class="card stats">
+        <h2>📊 Statistics</h2>
+        <div class="stats-grid">
+            <div><strong>{{ stats.count }}</strong><span>Passwords Generated</span></div>
+            <div><strong>{{ stats.avg_length }}</strong><span>Average Length</span></div>
+            <div><strong>{{ stats.avg_entropy }}</strong><span>Average Entropy (bits)</span></div>
+            <div><strong>{{ stats.strong_pct }}%</strong><span>Strong Rate</span></div>
+        </div>
+        <div class="strength-breakdown">
+            <div class="breakdown-row">
+                <span>Strong ({{ stats.strong_count }})</span>
+                <div class="breakdown-bar"><div class="breakdown-fill strength-fill-strong" style="width: {{ stats.strong_pct }}%;"></div></div>
+            </div>
+            <div class="breakdown-row">
+                <span>Medium ({{ stats.medium_count }})</span>
+                <div class="breakdown-bar"><div class="breakdown-fill strength-fill-medium" style="width: {{ (stats.medium_count / stats.count * 100) if stats.count else 0 }}%;"></div></div>
+            </div>
+            <div class="breakdown-row">
+                <span>Weak ({{ stats.weak_count }})</span>
+                <div class="breakdown-bar"><div class="breakdown-fill strength-fill-weak" style="width: {{ (stats.weak_count / stats.count * 100) if stats.count else 0 }}%;"></div></div>
+            </div>
+        </div>
+    </section>
+
+    <section class="card history">
+        <div class="history-header">
+            <h2>🕘 Password History (latest 10)</h2>
+            <div class="history-actions">
+                <a href="{{ url_for('export') }}" class="export-btn">⬇ Export CSV</a>
+                <form method="POST" action="{{ url_for('clear_history') }}" style="display:inline;"
+                      onsubmit="return confirm('Clear all history?');">
+                    <button type="submit" class="clear-btn">Clear</button>
+                </form>
+            </div>
+        </div>
+        {% if history %}
+        <ul class="history-list">
+            {% for line in history %}
+            <li>{{ line }}</li>
+            {% endfor %}
+        </ul>
+        {% else %}
+        <p class="empty">No passwords generated yet.</p>
+        {% endif %}
+    </section>
+
+</main>
+
+<footer>
+    <p>Built with Python, Flask, HTML &amp; CSS — passwords generated using <code>secrets.choice()</code></p>
+</footer>
+
+<script>
+    function switchMode(mode) {
+        const genForm = document.getElementById("generateForm");
+        const checkForm = document.getElementById("checkForm");
+        const tabGen = document.getElementById("tabGenerate");
+        const tabCheck = document.getElementById("tabCheck");
+
+        if (mode === "generate") {
+            genForm.style.display = "block";
+            checkForm.style.display = "none";
+            tabGen.classList.add("active");
+            tabCheck.classList.remove("active");
+        } else {
+            genForm.style.display = "none";
+            checkForm.style.display = "block";
+            tabCheck.classList.add("active");
+            tabGen.classList.remove("active");
+        }
+    }
+
+    function toggleCustomVisibility() {
+        const input = document.getElementById("customPassword");
+        const btn = document.getElementById("customToggleBtn");
+        if (input.type === "password") {
+            input.type = "text";
+            btn.textContent = "👁️";
+        } else {
+            input.type = "password";
+            btn.textContent = "🙈";
+        }
+    }
+
+    function toggleVisibility(elementId, btn) {
+        const el = document.getElementById(elementId);
+        const isMasked = el.classList.contains("masked");
+        if (isMasked) {
+            el.textContent = el.dataset.password;
+            el.classList.remove("masked");
+            btn.textContent = "🙈";
+        } else {
+            el.textContent = "••••••••";
+            el.classList.add("masked");
+            btn.textContent = "👁️";
+        }
+    }
+
+    function copyPassword(elementId, btn) {
+        const el = document.getElementById(elementId);
+        const text = el.dataset.password;
+        navigator.clipboard.writeText(text).then(() => {
+            const original = btn.textContent;
+            btn.textContent = "✅ Copied!";
+            setTimeout(() => { btn.textContent = original; }, 1500);
+        });
+    }
+
+    const themeToggle = document.getElementById("themeToggle");
+    const body = document.body;
+
+    if (localStorage.getItem("theme") === "light") {
+        body.classList.add("light-mode");
+        themeToggle.textContent = "☀️ Light Mode";
+    }
+
+    themeToggle.addEventListener("click", () => {
+        body.classList.toggle("light-mode");
+        const isLight = body.classList.contains("light-mode");
+        themeToggle.textContent = isLight ? "☀️ Light Mode" : "🌙 Dark Mode";
+        localStorage.setItem("theme", isLight ? "light" : "dark");
+    });
+</script>
+
+</body>
+</html>
